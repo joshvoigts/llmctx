@@ -2,6 +2,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+
 use std::process::Command;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -49,10 +50,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
       for file in files {
         let path = PathBuf::from(file);
-        paths.push(path);
+        if !skip_path(&path) {
+          paths.push(path);
+        }
       }
     } else {
-      eprintln!("Warning: Not a Git repository, defaulting to current directory");
       paths.push(PathBuf::from("."));
     }
   }
@@ -73,11 +75,11 @@ fn process_path(
 ) -> Result<(), Box<dyn std::error::Error>> {
   if path.is_dir() {
     process_directory(path, max_length, total_chars)?;
-  } else if path.is_file() {
+  } else if !skip_path(path) {
     process_file(path, max_length, total_chars)?;
   } else {
     eprintln!(
-      "Warning: {} is neither a file nor a directory, skipping.",
+      "Warning: {} is skipped due to naming conventions.",
       path.display()
     );
   }
@@ -101,7 +103,7 @@ fn process_directory(
       continue;
     }
 
-    if path.starts_with(".git") || path.ends_with(".lock") {
+    if skip_path(&path) {
       continue;
     }
 
@@ -134,6 +136,17 @@ fn process_file(
 
   *total_chars += file_output_len;
   Ok(())
+}
+
+fn skip_path(path: &PathBuf) -> bool {
+  // Skip hidden files (starting with .) and .lock files
+  path.starts_with(".git")
+    || path.ends_with(".lock")
+    || path
+      .file_name()
+      .map(|name| name.to_str().unwrap())
+      .unwrap_or("")
+      .starts_with(".")
 }
 
 fn is_git_repo(path: &PathBuf) -> bool {
