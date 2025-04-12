@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "llm_concat"
+name = "llmctx"
 version = "0.1.0"

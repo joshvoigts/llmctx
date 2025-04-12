@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Invalid arguments".into());
       }
       max_tokens = args[i + 1].parse::<u64>().unwrap();
-      i += 2; // Move past both "--max-length" and its value
+      i += 2; // Move past both "--max-tokens" and its value
     } else if repo_arg.is_none() && i < args.len() {
       repo_arg = Some(Path::new(&args[i]));
       i += 1; // Move to the next argument
@@ -58,6 +58,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   let mut total_chars: u64 = 0;
 
   for file in files {
+    // Skip files that start with '.' or end with .lock
+    if file.starts_with(".") || file.ends_with(".lock") {
+      continue;
+    }
+
     let path = Path::new(file);
     let path_str = path.display().to_string();
     let content =
