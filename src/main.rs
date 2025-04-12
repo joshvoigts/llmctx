@@ -1,7 +1,8 @@
 use std::env;
 use std::fs;
 use std::path::Path;
-use std::path::PathBuf; // Add this import
+use std::path::PathBuf;
+use std::process::Command;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
   let args: Vec<String> = env::args().collect();
@@ -20,14 +21,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       max_tokens = args[i + 1].parse::<u64>().unwrap();
       i += 2;
     } else {
-      // Convert the string argument to a PathBuf
-      let path = Path::new(&args[i]).to_path_buf(); // Changed to to_path_buf()
+      // Add all other arguments as paths
+      let path = Path::new(&args[i]).to_path_buf();
       paths.push(path);
       i += 1;
     }
   }
 
   let max_length = max_tokens * 5;
+
+  // If no paths are specified, default to the current Git repository (if it's a Git repo)
+  if paths.is_empty() {
+    let current_dir = PathBuf::from(".");
+    if is_git_repo(&current_dir) {
+      let output = Command::new("git")
+        .args(&["ls-tree", "-r", "--name-only", "HEAD"])
+        .output()
+        .expect("Failed to run git command");
+
+      let file_list = String::from_utf8(output.stdout)
+        .expect("Invalid UTF-8 output from git");
+
+      let files = file_list
+        .lines()
+        .filter(|line| !line.starts_with(".git"))
+        .collect::<Vec<_>>();
+
+      for file in files {
+        let path = PathBuf::from(file);
+        paths.push(path);
+      }
+    } else {
+      eprintln!("Warning: Not a Git repository, defaulting to current directory");
+      paths.push(PathBuf::from("."));
+    }
+  }
 
   let mut total_chars: u64 = 0;
 
@@ -106,4 +134,15 @@ fn process_file(
 
   *total_chars += file_output_len;
   Ok(())
+}
+
+fn is_git_repo(path: &PathBuf) -> bool {
+  let output = Command::new("git")
+    .args(&["rev-parse", "--is-inside-work-tree"])
+    .current_dir(path)
+    .output()
+    .ok()
+    .map(|out| out.status.success());
+
+  output.unwrap_or(false)
 }
