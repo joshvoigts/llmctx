@@ -1,11 +1,12 @@
+use anyhow::Result;
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-
 use std::process::Command;
+use std::process::Stdio;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
   let args: Vec<String> = env::args().collect();
 
   let mut max_tokens = 100_000_000; // Default to a large value
@@ -17,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args[i] == "--max-tokens" {
       if i + 1 >= args.len() {
         eprintln!("Error: --max-tokens requires a value");
-        return Err("Invalid arguments".into());
+        return Err(anyhow::anyhow!("Invalid arguments"));
       }
       max_tokens = args[i + 1].parse::<u64>().unwrap();
       i += 2;
@@ -29,36 +30,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
   }
 
-  let max_length = max_tokens * 5;
-
-  // If no paths are specified, default to the current Git repository (if it's a Git repo)
+  // If no paths are specified, default to the current Git repository
+  // (if it's a Git repo).
   if paths.is_empty() {
-    let current_dir = PathBuf::from(".");
-    if is_git_repo(&current_dir) {
-      let output = Command::new("git")
-        .args(&["ls-tree", "-r", "--name-only", "HEAD"])
-        .output()
-        .expect("Failed to run git command");
-
-      let file_list = String::from_utf8(output.stdout)
-        .expect("Invalid UTF-8 output from git");
-
-      let files = file_list
-        .lines()
-        .filter(|line| !line.starts_with(".git"))
-        .collect::<Vec<_>>();
-
-      for file in files {
-        let path = PathBuf::from(file);
-        if !skip_path(&path) {
-          paths.push(path);
-        }
+    match get_git_root_path() {
+      Ok(path) => {
+        paths.push(PathBuf::from(path));
       }
-    } else {
-      paths.push(PathBuf::from("."));
+      Err(_) => {
+        paths.push(PathBuf::from("."));
+      }
     }
   }
 
+  let max_length = max_tokens * 5;
   let mut total_chars: u64 = 0;
 
   for path in paths {
@@ -72,7 +57,7 @@ fn process_path(
   path: &PathBuf,
   max_length: u64,
   total_chars: &mut u64,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<()> {
   if path.is_dir() {
     process_directory(path, max_length, total_chars)?;
   } else if !skip_path(path) {
@@ -91,23 +76,18 @@ fn process_directory(
   directory: &PathBuf,
   max_length: u64,
   total_chars: &mut u64,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<()> {
   let entries = fs::read_dir(directory)?;
 
   for entry in entries {
     let entry = entry?;
     let path = entry.path();
 
-    if path.is_dir() {
-      // Skip subdirectories
-      continue;
-    }
-
     if skip_path(&path) {
       continue;
     }
 
-    process_file(&path, max_length, total_chars)?;
+    process_path(&path, max_length, total_chars)?;
   }
 
   Ok(())
@@ -117,7 +97,7 @@ fn process_file(
   file: &PathBuf,
   max_length: u64,
   total_chars: &mut u64,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<()> {
   let content = fs::read_to_string(file)?;
   let trimmed_content = content.trim();
   let content_len = trimmed_content.len() as u64;
@@ -139,23 +119,31 @@ fn process_file(
 }
 
 fn skip_path(path: &PathBuf) -> bool {
-  // Skip hidden files (starting with .) and .lock files
-  path.starts_with(".git")
-    || path.ends_with(".lock")
-    || path
-      .file_name()
-      .map(|name| name.to_str().unwrap())
-      .unwrap_or("")
-      .starts_with(".")
+  let name = path
+    .file_name()
+    .map(|name| name.to_str().unwrap_or(""))
+    .unwrap_or("");
+  name.starts_with(".") || name.ends_with(".lock")
 }
 
-fn is_git_repo(path: &PathBuf) -> bool {
+fn get_git_root_path() -> Result<String> {
+  // Run the 'git rev-parse --show-toplevel' command
   let output = Command::new("git")
-    .args(&["rev-parse", "--is-inside-work-tree"])
-    .current_dir(path)
-    .output()
-    .ok()
-    .map(|out| out.status.success());
+    .arg("rev-parse")
+    .arg("--show-toplevel")
+    .stdout(Stdio::piped())
+    .spawn()?;
 
-  output.unwrap_or(false)
+  // Read the output of the command
+  let output = output.wait_with_output()?;
+
+  if !output.status.success() {
+    return Err(anyhow::anyhow!("Git command failed"));
+  }
+
+  // Convert the output to a string and return the path
+  let git_root_path =
+    std::str::from_utf8(&output.stdout)?.trim().to_string();
+
+  Ok(git_root_path)
 }
