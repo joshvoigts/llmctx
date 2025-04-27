@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::env;
 use std::fs;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -18,7 +19,10 @@ fn main() -> Result<()> {
   // Parse command-line arguments
   let mut i = 1;
   while i < args.len() {
-    if args[i] == "--max-tokens" {
+    if args[i] == "-" {
+      i += 1;
+      continue;
+    } else if args[i] == "--max-tokens" {
       if i + 1 >= args.len() {
         eprintln!("Error: --max-tokens requires a value");
         return Err(anyhow::anyhow!("Invalid arguments"));
@@ -67,7 +71,15 @@ fn main() -> Result<()> {
   }
 
   if should_debug {
-    run_debug_command()?;
+    output.push_str("\n\n```\n");
+    run_debug_command(&mut output)?;
+    output.push_str("\n```");
+  }
+
+  if should_copy_to_clipboard {
+    copy_to_clipboard(&output)?;
+  } else {
+    println!("{}", output);
   }
 
   Ok(())
@@ -99,7 +111,8 @@ fn process_directory(
   total_chars: &mut u64,
   output: &mut String,
 ) -> Result<()> {
-  let entries = fs::read_dir(directory)?;
+  let entries =
+    fs::read_dir(directory).expect("Failed to read directory");
 
   for entry in entries {
     let entry = entry?;
@@ -121,7 +134,9 @@ fn process_file(
   total_chars: &mut u64,
   output: &mut String,
 ) -> Result<()> {
-  let content = fs::read_to_string(file)?;
+  let content = fs::read_to_string(file).expect(
+    format!("Failed to read file: {}", file.display()).as_str(),
+  );
   let trimmed_content = content.trim();
   let content_len = trimmed_content.len() as u64;
 
@@ -132,7 +147,7 @@ fn process_file(
     return Ok(());
   }
 
-  output.push_str(&format!("\n{}\n", file.display()));
+  output.push_str(&format!("\n\n{}:\n", file.display()));
   output.push_str("```\n");
   output.push_str(&trimmed_content);
   output.push_str("\n```");
@@ -181,7 +196,28 @@ fn copy_to_clipboard(output: &str) -> Result<()> {
   Ok(())
 }
 
-fn run_debug_command() -> Result<()> {
-  Command::new("cargo").arg("build").spawn()?.wait()?;
+fn run_debug_command(output: &mut String) -> Result<()> {
+  let mut child = Command::new("cargo")
+    .arg("build")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()?;
+
+  let mut stdout = child.stdout.take().unwrap();
+  let mut stderr = child.stderr.take().unwrap();
+
+  let mut stdout_bytes = Vec::new();
+  let mut stderr_bytes = Vec::new();
+
+  stdout.read_to_end(&mut stdout_bytes)?;
+  stderr.read_to_end(&mut stderr_bytes)?;
+
+  let output_str = String::from_utf8_lossy(&stdout_bytes);
+  let error_str = String::from_utf8_lossy(&stderr_bytes);
+
+  output.push_str(&format!("Build Output:\n{}\n", output_str));
+  output.push_str(&format!("Build Errors:\n{}\n", error_str));
+
+  child.wait()?;
   Ok(())
 }
