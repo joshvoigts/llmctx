@@ -13,6 +13,7 @@ fn main() -> Result<()> {
   let mut max_tokens = 100_000_000; // Default to a large value
   let mut paths: Vec<PathBuf> = Vec::new();
   let mut should_copy_to_clipboard = false;
+  let mut should_debug = false;
 
   // Parse command-line arguments
   let mut i = 1;
@@ -26,6 +27,9 @@ fn main() -> Result<()> {
       i += 2;
     } else if args[i] == "-c" || args[i] == "--copy" {
       should_copy_to_clipboard = true;
+      i += 1;
+    } else if args[i] == "-d" || args[i] == "--debug" {
+      should_debug = true;
       i += 1;
     } else {
       // Add all other arguments as paths
@@ -60,6 +64,10 @@ fn main() -> Result<()> {
     copy_to_clipboard(&output)?;
   } else {
     println!("{}", output);
+  }
+
+  if should_debug {
+    run_debug_command()?;
   }
 
   Ok(())
@@ -170,5 +178,10 @@ fn copy_to_clipboard(output: &str) -> Result<()> {
     .stdin
     .unwrap()
     .write_all(output.as_bytes())?;
+  Ok(())
+}
+
+fn run_debug_command() -> Result<()> {
+  Command::new("cargo").arg("build").spawn()?.wait()?;
   Ok(())
 }
