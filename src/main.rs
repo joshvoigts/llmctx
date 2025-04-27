@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -11,6 +12,7 @@ fn main() -> Result<()> {
 
   let mut max_tokens = 100_000_000; // Default to a large value
   let mut paths: Vec<PathBuf> = Vec::new();
+  let mut should_copy_to_clipboard = false;
 
   // Parse command-line arguments
   let mut i = 1;
@@ -22,6 +24,9 @@ fn main() -> Result<()> {
       }
       max_tokens = args[i + 1].parse::<u64>().unwrap();
       i += 2;
+    } else if args[i] == "-c" || args[i] == "--copy" {
+      should_copy_to_clipboard = true;
+      i += 1;
     } else {
       // Add all other arguments as paths
       let path = Path::new(&args[i]).to_path_buf();
@@ -45,9 +50,16 @@ fn main() -> Result<()> {
 
   let max_length = max_tokens * 5;
   let mut total_chars: u64 = 0;
+  let mut output = String::new();
 
   for path in paths {
-    process_path(&path, max_length, &mut total_chars)?;
+    process_path(&path, max_length, &mut total_chars, &mut output)?;
+  }
+
+  if should_copy_to_clipboard {
+    copy_to_clipboard(&output)?;
+  } else {
+    println!("{}", output);
   }
 
   Ok(())
@@ -57,11 +69,12 @@ fn process_path(
   path: &PathBuf,
   max_length: u64,
   total_chars: &mut u64,
+  output: &mut String,
 ) -> Result<()> {
   if path.is_dir() {
-    process_directory(path, max_length, total_chars)?;
+    process_directory(path, max_length, total_chars, output)?;
   } else if !skip_path(path) {
-    process_file(path, max_length, total_chars)?;
+    process_file(path, max_length, total_chars, output)?;
   } else {
     eprintln!(
       "Warning: {} is skipped due to naming conventions.",
@@ -76,6 +89,7 @@ fn process_directory(
   directory: &PathBuf,
   max_length: u64,
   total_chars: &mut u64,
+  output: &mut String,
 ) -> Result<()> {
   let entries = fs::read_dir(directory)?;
 
@@ -87,7 +101,7 @@ fn process_directory(
       continue;
     }
 
-    process_path(&path, max_length, total_chars)?;
+    process_path(&path, max_length, total_chars, output)?;
   }
 
   Ok(())
@@ -97,6 +111,7 @@ fn process_file(
   file: &PathBuf,
   max_length: u64,
   total_chars: &mut u64,
+  output: &mut String,
 ) -> Result<()> {
   let content = fs::read_to_string(file)?;
   let trimmed_content = content.trim();
@@ -109,10 +124,10 @@ fn process_file(
     return Ok(());
   }
 
-  println!("\n{}", file.display());
-  println!("```");
-  println!("{}", trimmed_content);
-  println!("```");
+  output.push_str(&format!("\n{}\n", file.display()));
+  output.push_str("```\n");
+  output.push_str(&trimmed_content);
+  output.push_str("\n```");
 
   *total_chars += file_output_len;
   Ok(())
@@ -146,4 +161,14 @@ fn get_git_root_path() -> Result<String> {
     std::str::from_utf8(&output.stdout)?.trim().to_string();
 
   Ok(git_root_path)
+}
+
+fn copy_to_clipboard(output: &str) -> Result<()> {
+  Command::new("pbcopy")
+    .stdin(Stdio::piped())
+    .spawn()?
+    .stdin
+    .unwrap()
+    .write_all(output.as_bytes())?;
+  Ok(())
 }
