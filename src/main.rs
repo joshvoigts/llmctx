@@ -1,64 +1,59 @@
 use anyhow::Result;
-use std::env;
+use opt::{Opt, Opts};
 use std::fs;
 use std::io::Read;
 use std::io::Write;
-use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 
+const DEFAULT_MAX_TOKENS: u64 = 100_000_000;
+
 fn main() -> Result<()> {
-  let args: Vec<String> = env::args().collect();
+  let true_value = Some("true".to_string());
 
-  let mut max_tokens = 100_000_000; // Default to a large value
-  let mut paths: Vec<PathBuf> = Vec::new();
-  let mut should_copy_to_clipboard = false;
-  let mut should_debug = false;
+  let opts = Opts::new("my_program")
+    .description("Process files and directories")
+    .usage("Usage: llmctx [options] [paths]")
+    .option(
+      Opt::new("max-tokens")
+        .description("Maximum number of tokens")
+        .arg("NUM"),
+    )
+    .option(
+      Opt::new("copy")
+        .description("Copy output to clipboard")
+        .short("-c"),
+    )
+    .option(
+      Opt::new("debug")
+        .description("Enable debug mode")
+        .short("-d"),
+    )
+    .parse();
 
-  // Parse command-line arguments
-  let mut i = 1;
-  while i < args.len() {
-    if args[i] == "-" {
-      i += 1;
-      continue;
-    } else if args[i] == "--max-tokens" {
-      if i + 1 >= args.len() {
-        eprintln!("Error: --max-tokens requires a value");
-        return Err(anyhow::anyhow!("Invalid arguments"));
-      }
-      max_tokens = args[i + 1].parse::<u64>().unwrap();
-      i += 2;
-    } else if args[i] == "-c" || args[i] == "--copy" {
-      should_copy_to_clipboard = true;
-      i += 1;
-    } else if args[i] == "-d" || args[i] == "--debug" {
-      should_debug = true;
-      i += 1;
-    } else {
-      // Add all other arguments as paths
-      let path = Path::new(&args[i]).to_path_buf();
-      paths.push(path);
-      i += 1;
-    }
-  }
-
-  // If no paths are specified, default to the current Git repository
-  // (if it's a Git repo).
-  if paths.is_empty() {
-    match get_git_root_path() {
-      Ok(path) => {
-        paths.push(PathBuf::from(path));
-      }
-      Err(_) => {
-        paths.push(PathBuf::from("."));
-      }
-    }
-  }
+  let max_tokens_str = opts
+    .get("max-tokens")
+    .unwrap_or(DEFAULT_MAX_TOKENS.to_string());
+  let max_tokens = max_tokens_str
+    .parse::<u64>()
+    .expect("Invalid max-tokens value");
+  let should_copy_to_clipboard = opts.get("copy") == true_value;
+  let should_debug = opts.get("debug") == true_value;
 
   let max_length = max_tokens * 5;
   let mut total_chars: u64 = 0;
   let mut output = String::new();
+
+  let mut paths: Vec<PathBuf> =
+    opts.rest.iter().map(PathBuf::from).collect();
+
+  if paths.is_empty() {
+    match get_git_root_path() {
+      Ok(path) => paths.push(PathBuf::from(path)),
+      Err(_) => paths.push(PathBuf::from(".")),
+    }
+  }
 
   for path in paths {
     process_path(&path, max_length, &mut total_chars, &mut output)?;
