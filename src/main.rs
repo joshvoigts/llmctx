@@ -1,5 +1,5 @@
 use anyhow::Result;
-use opt::{Opt, Opts};
+use optz::{Opt, Optz};
 use std::fs;
 use std::io::Read;
 use std::io::Write;
@@ -12,7 +12,7 @@ const DEFAULT_MAX_TOKENS: u64 = 100_000_000;
 fn main() -> Result<()> {
   let true_value = Some("true".to_string());
 
-  let opts = Opts::new("my_program")
+  let opts = Optz::new("my_program")
     .description("Process files and directories")
     .usage("Usage: llmctx [options] [paths]")
     .option(

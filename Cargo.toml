@@ -2,7 +2,12 @@
 name = "llmctx"
 version = "0.1.0"
 edition = "2024"
+description = "LLM context builder"
+license = "MIT"
+authors = ["Josh Voigts <joshvoigts@gmail.com>"]
+repository = "https://github.com/joshvoigts/llmctx"
+readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.97"
-opt = { path = "../opt" }
+optz = "0.1.0"

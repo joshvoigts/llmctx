@@ -13,12 +13,14 @@ name = "llmctx"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "opt",
+ "optz",
 ]
 
 [[package]]
-name = "opt"
+name = "optz"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92b61b6345db6d0321be412377a95fa93563b6d83a478d495bf5352a80975bba"
 dependencies = [
  "anyhow",
 ]
