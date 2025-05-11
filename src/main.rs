@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use ignore::WalkBuilder;
 use optz::{Opt, Optz};
 use std::fs;
@@ -29,6 +29,11 @@ fn main() -> Result<()> {
         .description("Enable debug mode")
         .short("-d"),
     )
+    .option(
+      Opt::flag("test")
+        .description("Run tests and include output")
+        .short("-t"),
+    )
     .parse();
 
   let max_tokens: u64 =
@@ -36,6 +41,7 @@ fn main() -> Result<()> {
   let should_copy_to_clipboard: bool =
     optz.get("copy")?.is_some_and(|o| o);
   let should_debug: bool = optz.get("debug")?.is_some_and(|o| o);
+  let should_test: bool = optz.get("test")?.is_some_and(|o| o);
 
   let max_length = max_tokens * 5;
   let mut total_chars: u64 = 0;
@@ -44,7 +50,7 @@ fn main() -> Result<()> {
   let mut paths: Vec<PathBuf> =
     optz.rest.iter().map(PathBuf::from).collect();
 
-  if paths.is_empty() {
+  if paths.is_empty() && !should_test && !should_debug {
     match get_git_root_path() {
       Ok(path) => paths.push(PathBuf::from(path)),
       Err(_) => paths.push(PathBuf::from(".")),
@@ -63,9 +69,7 @@ fn main() -> Result<()> {
 
   // Process debug information if requested
   if should_debug {
-    output.push_str("```\n");
     run_debug_command(&mut output)?;
-    output.push_str("\n```\n\n");
 
     // Display or copy the updated output
     if should_copy_to_clipboard {
@@ -73,6 +77,21 @@ fn main() -> Result<()> {
     } else {
       println!("{}", output);
     }
+  }
+
+  if should_test {
+    run_test_command(&mut output)?;
+
+    // Display or copy the updated output
+    if should_copy_to_clipboard {
+      copy_to_clipboard(&output)?;
+    } else {
+      println!("{}", output);
+    }
+  }
+
+  if !should_copy_to_clipboard {
+    println!();
   }
 
   Ok(())
@@ -95,14 +114,17 @@ fn process_paths(
 
           // Only process files that aren't skipped
           if file_path.is_file() && !should_skip(&file_path) {
-            if let Err(e) =
-              process_file(&file_path, max_length, total_chars, output)
-            {
-              eprintln!(
+            if let Err(e) = process_file(
+              &file_path,
+              max_length,
+              total_chars,
+              output,
+            ) {
+              return Err(anyhow!(
                 "Error processing {}: {}",
                 file_path.display(),
                 e
-              );
+              ));
             }
 
             // Stop if we've reached the token limit
@@ -112,7 +134,7 @@ fn process_paths(
           }
         }
         Err(e) => {
-          eprintln!("Error accessing path: {}", e);
+          return Err(anyhow!("Error accessing path: {}", e));
         }
       }
     }
@@ -166,7 +188,7 @@ fn get_git_root_path() -> Result<String> {
     .wait_with_output()?;
 
   if !output.status.success() {
-    return Err(anyhow::anyhow!("Git command failed"));
+    return Err(anyhow!("Git command failed"));
   }
 
   let git_root_path =
@@ -183,7 +205,6 @@ fn copy_to_clipboard(output: &str) -> Result<()> {
   }
 
   child.wait()?;
-  println!("Output copied to clipboard.");
   Ok(())
 }
 
@@ -208,8 +229,40 @@ fn run_debug_command(output: &mut String) -> Result<()> {
   let output_str = String::from_utf8_lossy(&stdout_bytes);
   let error_str = String::from_utf8_lossy(&stderr_bytes);
 
-  output.push_str(&format!("Build Output:\n{}\n", output_str));
-  output.push_str(&format!("Build Errors:\n{}\n", error_str));
+  output.push_str("Build Output:\n");
+  output.push_str("```\n");
+  output.push_str(&format!("{error_str}{output_str}"));
+  output.push_str("```\n\n");
+
+  child.wait()?;
+  Ok(())
+}
+
+fn run_test_command(output: &mut String) -> Result<()> {
+  let mut child = Command::new("cargo")
+    .arg("test")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()?;
+
+  let mut stdout_bytes = Vec::new();
+  let mut stderr_bytes = Vec::new();
+
+  if let Some(mut stdout) = child.stdout.take() {
+    stdout.read_to_end(&mut stdout_bytes)?;
+  }
+
+  if let Some(mut stderr) = child.stderr.take() {
+    stderr.read_to_end(&mut stderr_bytes)?;
+  }
+
+  let output_str = String::from_utf8_lossy(&stdout_bytes);
+  let error_str = String::from_utf8_lossy(&stderr_bytes);
+
+  output.push_str("Test Output:\n");
+  output.push_str("```\n");
+  output.push_str(&format!("{error_str}{output_str}"));
+  output.push_str("```\n\n");
 
   child.wait()?;
   Ok(())

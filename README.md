@@ -29,6 +29,7 @@ llmctx [OPTIONS] [PATHS]
 | `--max-tokens`    | Maximum number of tokens for output      |            |
 | `--copy`          | Copy output to clipboard                 | `-c`       |
 | `--debug`         | Enable debug mode (shows build info)     | `-d`       |
+| `--test`          | Run tests and include output             | `-t`       |
 
 ### Examples
 
