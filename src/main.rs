@@ -1,4 +1,5 @@
 use anyhow::Result;
+use ignore::WalkBuilder;
 use optz::{Opt, Optz};
 use std::fs;
 use std::io::Read;
@@ -7,46 +8,41 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 
-const DEFAULT_MAX_TOKENS: u64 = 100_000_000;
+const DEFAULT_MAX_TOKENS: &str = "100000000";
 
 fn main() -> Result<()> {
-  let true_value = Some("true".to_string());
-
-  let opts = Optz::new("my_program")
-    .description("Process files and directories")
+  let optz = Optz::new("llmctx")
+    .description("Process files and directories for LLM context")
     .usage("Usage: llmctx [options] [paths]")
     .option(
-      Opt::new("max-tokens")
-        .description("Maximum number of tokens")
-        .arg("NUM"),
+      Opt::arg("max-tokens")
+        .default_value(DEFAULT_MAX_TOKENS)
+        .description("Maximum number of tokens"),
     )
     .option(
-      Opt::new("copy")
+      Opt::flag("copy")
         .description("Copy output to clipboard")
         .short("-c"),
     )
     .option(
-      Opt::new("debug")
+      Opt::flag("debug")
         .description("Enable debug mode")
         .short("-d"),
     )
     .parse();
 
-  let max_tokens_str = opts
-    .get("max-tokens")
-    .unwrap_or(DEFAULT_MAX_TOKENS.to_string());
-  let max_tokens = max_tokens_str
-    .parse::<u64>()
-    .expect("Invalid max-tokens value");
-  let should_copy_to_clipboard = opts.get("copy") == true_value;
-  let should_debug = opts.get("debug") == true_value;
+  let max_tokens: u64 =
+    optz.get("max-tokens")?.expect("Invalid max_tokens");
+  let should_copy_to_clipboard: bool =
+    optz.get("copy")?.is_some_and(|o| o);
+  let should_debug: bool = optz.get("debug")?.is_some_and(|o| o);
 
   let max_length = max_tokens * 5;
   let mut total_chars: u64 = 0;
   let mut output = String::new();
 
   let mut paths: Vec<PathBuf> =
-    opts.rest.iter().map(PathBuf::from).collect();
+    optz.rest.iter().map(PathBuf::from).collect();
 
   if paths.is_empty() {
     match get_git_root_path() {
@@ -55,69 +51,71 @@ fn main() -> Result<()> {
     }
   }
 
-  for path in paths {
-    process_path(&path, max_length, &mut total_chars, &mut output)?;
-  }
+  // Process all paths using WalkBuilder for unified traversal
+  process_paths(&paths, max_length, &mut total_chars, &mut output)?;
 
+  // Display or copy output
   if should_copy_to_clipboard {
     copy_to_clipboard(&output)?;
   } else {
     println!("{}", output);
   }
 
+  // Process debug information if requested
   if should_debug {
-    output.push_str("\n\n```\n");
+    output.push_str("```\n");
     run_debug_command(&mut output)?;
-    output.push_str("\n```");
-  }
+    output.push_str("\n```\n\n");
 
-  if should_copy_to_clipboard {
-    copy_to_clipboard(&output)?;
-  } else {
-    println!("{}", output);
-  }
-
-  Ok(())
-}
-
-fn process_path(
-  path: &PathBuf,
-  max_length: u64,
-  total_chars: &mut u64,
-  output: &mut String,
-) -> Result<()> {
-  if path.is_dir() {
-    process_directory(path, max_length, total_chars, output)?;
-  } else if !skip_path(path) {
-    process_file(path, max_length, total_chars, output)?;
-  } else {
-    eprintln!(
-      "Warning: {} is skipped due to naming conventions.",
-      path.display()
-    );
-  }
-
-  Ok(())
-}
-
-fn process_directory(
-  directory: &PathBuf,
-  max_length: u64,
-  total_chars: &mut u64,
-  output: &mut String,
-) -> Result<()> {
-  let entries =
-    fs::read_dir(directory).expect("Failed to read directory");
-
-  for entry in entries {
-    let entry = entry?;
-    let path = entry.path();
-
-    if skip_path(&path) {
-      continue;
+    // Display or copy the updated output
+    if should_copy_to_clipboard {
+      copy_to_clipboard(&output)?;
+    } else {
+      println!("{}", output);
     }
+  }
 
-    process_path(&path, max_length, total_chars, output)?;
+  Ok(())
+}
+
+fn process_paths(
+  paths: &[PathBuf],
+  max_length: u64,
+  total_chars: &mut u64,
+  output: &mut String,
+) -> Result<()> {
+  for path in paths {
+    // For each path, create a walker that respects .gitignore
+    let walker = WalkBuilder::new(path).ignore(true).build();
+
+    for result in walker {
+      match result {
+        Ok(entry) => {
+          let file_path = entry.into_path();
+
+          // Only process files that aren't skipped
+          if file_path.is_file() && !should_skip(&file_path) {
+            if let Err(e) =
+              process_file(&file_path, max_length, total_chars, output)
+            {
+              eprintln!(
+                "Error processing {}: {}",
+                file_path.display(),
+                e
+              );
+            }
+
+            // Stop if we've reached the token limit
+            if *total_chars >= max_length {
+              return Ok(());
+            }
+          }
+        }
+        Err(e) => {
+          eprintln!("Error accessing path: {}", e);
+        }
+      }
+    }
   }
 
   Ok(())
@@ -129,65 +127,63 @@ fn process_file(
   total_chars: &mut u64,
   output: &mut String,
 ) -> Result<()> {
-  let content = fs::read_to_string(file).expect(
-    format!("Failed to read file: {}", file.display()).as_str(),
-  );
+  let content = fs::read_to_string(file)?;
   let trimmed_content = content.trim();
   let content_len = trimmed_content.len() as u64;
 
   let path_str = file.display().to_string();
-  let file_output_len = (path_str.len() as u64) + content_len + 11;
+  let file_output_len = (path_str.len() as u64) + content_len + 11; // Format overhead
 
   if *total_chars + file_output_len > max_length {
     return Ok(());
   }
 
-  output.push_str(&format!("\n\n{}:\n", file.display()));
+  output.push_str(&format!("{}:\n", file.display()));
   output.push_str("```\n");
-  output.push_str(&trimmed_content);
-  output.push_str("\n```");
+  output.push_str(trimmed_content);
+  output.push_str("\n```\n\n");
 
   *total_chars += file_output_len;
   Ok(())
 }
 
-fn skip_path(path: &PathBuf) -> bool {
-  let name = path
-    .file_name()
-    .map(|name| name.to_str().unwrap_or(""))
-    .unwrap_or("");
-  name.starts_with(".") || name.ends_with(".lock")
+fn should_skip(path: &PathBuf) -> bool {
+  let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+  name.starts_with(".")
+    || name.ends_with(".lock")
+    || name == "LICENSE"
+    || path.to_string_lossy().contains("node_modules")
+    || name == "package-lock.json"
 }
 
 fn get_git_root_path() -> Result<String> {
-  // Run the 'git rev-parse --show-toplevel' command
   let output = Command::new("git")
     .arg("rev-parse")
     .arg("--show-toplevel")
     .stdout(Stdio::piped())
-    .spawn()?;
-
-  // Read the output of the command
-  let output = output.wait_with_output()?;
+    .spawn()?
+    .wait_with_output()?;
 
   if !output.status.success() {
     return Err(anyhow::anyhow!("Git command failed"));
   }
 
-  // Convert the output to a string and return the path
   let git_root_path =
-    std::str::from_utf8(&output.stdout)?.trim().to_string();
-
+    String::from_utf8(output.stdout)?.trim().to_string();
   Ok(git_root_path)
 }
 
 fn copy_to_clipboard(output: &str) -> Result<()> {
-  Command::new("pbcopy")
-    .stdin(Stdio::piped())
-    .spawn()?
-    .stdin
-    .unwrap()
-    .write_all(output.as_bytes())?;
+  let mut child =
+    Command::new("pbcopy").stdin(Stdio::piped()).spawn()?;
+
+  if let Some(mut stdin) = child.stdin.take() {
+    stdin.write_all(output.as_bytes())?;
+  }
+
+  child.wait()?;
+  println!("Output copied to clipboard.");
   Ok(())
 }
 
@@ -198,14 +194,16 @@ fn run_debug_command(output: &mut String) -> Result<()> {
     .stderr(Stdio::piped())
     .spawn()?;
 
-  let mut stdout = child.stdout.take().unwrap();
-  let mut stderr = child.stderr.take().unwrap();
-
   let mut stdout_bytes = Vec::new();
   let mut stderr_bytes = Vec::new();
 
-  stdout.read_to_end(&mut stdout_bytes)?;
-  stderr.read_to_end(&mut stderr_bytes)?;
+  if let Some(mut stdout) = child.stdout.take() {
+    stdout.read_to_end(&mut stdout_bytes)?;
+  }
+
+  if let Some(mut stderr) = child.stderr.take() {
+    stderr.read_to_end(&mut stderr_bytes)?;
+  }
 
   let output_str = String::from_utf8_lossy(&stdout_bytes);
   let error_str = String::from_utf8_lossy(&stderr_bytes);

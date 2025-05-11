@@ -10,4 +10,5 @@ readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.97"
-optz = "0.1.0"
+ignore = "0.4.23"
+optz = "0.2.0"
