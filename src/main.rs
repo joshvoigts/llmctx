@@ -190,6 +190,7 @@ fn should_skip(path: &PathBuf, paths: &[PathBuf]) -> bool {
     || name == "LICENSE"
     || path.to_string_lossy().contains("node_modules")
     || name == "package-lock.json"
+    || name == "tests"
 }
 
 fn get_git_root_path() -> Result<String> {
