@@ -104,6 +104,7 @@ fn process_paths(
   output: &mut String,
 ) -> Result<()> {
   for path in paths {
+    // For each path, create a walker that respects .gitignore
     let walker = WalkBuilder::new(path).ignore(true).build();
 
     for result in walker {
@@ -111,7 +112,8 @@ fn process_paths(
         Ok(entry) => {
           let file_path = entry.into_path();
 
-          if file_path.is_file() && !should_skip(&file_path, paths) {
+          // Only process files that aren't skipped
+          if file_path.is_file() && !should_skip(&file_path) {
             if let Err(e) = process_file(
               &file_path,
               max_length,
@@ -125,12 +127,15 @@ fn process_paths(
               ));
             }
 
+            // Stop if we've reached the token limit
             if *total_chars >= max_length {
               return Ok(());
             }
           }
         }
-        Err(e) => return Err(anyhow!("Error accessing path: {}", e)),
+        Err(e) => {
+          return Err(anyhow!("Error accessing path: {}", e));
+        }
       }
     }
   }
@@ -164,25 +169,14 @@ fn process_file(
   Ok(())
 }
 
-fn should_skip(path: &PathBuf, paths: &[PathBuf]) -> bool {
+fn should_skip(path: &PathBuf) -> bool {
   let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
-  // Check if the file's directory is in the provided paths
-  let file_dir = path.parent().unwrap_or(path.as_path());
-  let is_in_explicit = paths.iter().any(|p| p == file_dir);
-
-  // Do not skip explicitly provided paths
-  if is_in_explicit {
-    return false;
-  }
-
-  // Other conditions
   name.starts_with(".")
     || name.ends_with(".lock")
     || name == "LICENSE"
     || path.to_string_lossy().contains("node_modules")
     || name == "package-lock.json"
-    || name == "tests"
 }
 
 fn get_git_root_path() -> Result<String> {
