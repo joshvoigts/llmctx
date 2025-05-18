@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use ignore::WalkBuilder;
 use optz::{Opt, Optz};
+use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::io::Write;
@@ -47,7 +48,7 @@ fn main() -> Result<()> {
   let mut total_chars: u64 = 0;
   let mut output = String::new();
 
-  let mut paths: Vec<PathBuf> =
+  let paths: Vec<PathBuf> =
     optz.rest.iter().map(PathBuf::from).collect();
 
   if paths.is_empty() && !should_test && !should_debug {
@@ -58,7 +59,13 @@ fn main() -> Result<()> {
   }
 
   // Process all paths using WalkBuilder for unified traversal
-  process_paths(&paths, max_length, &mut total_chars, &mut output)?;
+  process_paths(
+    &paths,
+    max_length,
+    total_chars,
+    &mut output,
+    should_test,
+  )?;
 
   // Display or copy output
   if should_copy_to_clipboard {
@@ -102,9 +109,9 @@ fn process_paths(
   max_length: u64,
   total_chars: &mut u64,
   output: &mut String,
+  should_test: bool,
 ) -> Result<()> {
   for path in paths {
-    // For each path, create a walker that respects .gitignore
     let walker = WalkBuilder::new(path).ignore(true).build();
 
     for result in walker {
@@ -112,8 +119,7 @@ fn process_paths(
         Ok(entry) => {
           let file_path = entry.into_path();
 
-          // Only process files that aren't skipped
-          if file_path.is_file() && !should_skip(&file_path) {
+          if file_path.is_file() && !should_skip(&file_path, paths) {
             if let Err(e) = process_file(
               &file_path,
               max_length,
@@ -127,15 +133,12 @@ fn process_paths(
               ));
             }
 
-            // Stop if we've reached the token limit
             if *total_chars >= max_length {
               return Ok(());
             }
           }
         }
-        Err(e) => {
-          return Err(anyhow!("Error accessing path: {}", e));
-        }
+        Err(e) => return Err(anyhow!("Error accessing path: {}", e)),
       }
     }
   }
@@ -169,9 +172,19 @@ fn process_file(
   Ok(())
 }
 
-fn should_skip(path: &PathBuf) -> bool {
+fn should_skip(path: &PathBuf, paths: &[PathBuf]) -> bool {
   let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
+  // Check if the file's directory is in the provided paths
+  let file_dir = path.parent().unwrap_or(path.as_path());
+  let is_in_explicit = paths.iter().any(|p| p == file_dir);
+
+  // Do not skip explicitly provided paths
+  if is_in_explicit {
+    return false;
+  }
+
+  // Other conditions
   name.starts_with(".")
     || name.ends_with(".lock")
     || name == "LICENSE"
