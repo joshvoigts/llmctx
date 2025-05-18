@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 use ignore::WalkBuilder;
 use optz::{Opt, Optz};
-use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::io::Write;
@@ -48,7 +47,7 @@ fn main() -> Result<()> {
   let mut total_chars: u64 = 0;
   let mut output = String::new();
 
-  let paths: Vec<PathBuf> =
+  let mut paths: Vec<PathBuf> =
     optz.rest.iter().map(PathBuf::from).collect();
 
   if paths.is_empty() && !should_test && !should_debug {
@@ -59,13 +58,7 @@ fn main() -> Result<()> {
   }
 
   // Process all paths using WalkBuilder for unified traversal
-  process_paths(
-    &paths,
-    max_length,
-    total_chars,
-    &mut output,
-    should_test,
-  )?;
+  process_paths(&paths, max_length, &mut total_chars, &mut output)?;
 
   // Display or copy output
   if should_copy_to_clipboard {
@@ -109,7 +102,6 @@ fn process_paths(
   max_length: u64,
   total_chars: &mut u64,
   output: &mut String,
-  should_test: bool,
 ) -> Result<()> {
   for path in paths {
     let walker = WalkBuilder::new(path).ignore(true).build();
