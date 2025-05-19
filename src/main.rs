@@ -34,7 +34,13 @@ fn main() -> Result<()> {
         .description("Run tests and include output")
         .short("-t"),
     )
-    .parse();
+    .option(
+      Opt::arg("exclude")
+        .description("Exclude files matching a pattern")
+        .short("-e")
+        .multiple(true),
+    )
+    .parse()?;
 
   let max_tokens: u64 =
     optz.get("max-tokens")?.expect("Invalid max_tokens");
@@ -42,6 +48,8 @@ fn main() -> Result<()> {
     optz.get("copy")?.is_some_and(|o| o);
   let should_debug: bool = optz.get("debug")?.is_some_and(|o| o);
   let should_test: bool = optz.get("test")?.is_some_and(|o| o);
+
+  let excludes: Vec<String> = optz.get_values("exclude")?;
 
   let max_length = max_tokens * 5;
   let mut total_chars: u64 = 0;
@@ -58,7 +66,13 @@ fn main() -> Result<()> {
   }
 
   // Process all paths using WalkBuilder for unified traversal
-  process_paths(&paths, max_length, &mut total_chars, &mut output)?;
+  process_paths(
+    &paths,
+    max_length,
+    &mut total_chars,
+    &mut output,
+    &excludes,
+  )?;
 
   // Display or copy output
   if should_copy_to_clipboard {
@@ -102,6 +116,7 @@ fn process_paths(
   max_length: u64,
   total_chars: &mut u64,
   output: &mut String,
+  excludes: &[String],
 ) -> Result<()> {
   for path in paths {
     // For each path, create a walker that respects .gitignore
@@ -113,7 +128,8 @@ fn process_paths(
           let file_path = entry.into_path();
 
           // Only process files that aren't skipped
-          if file_path.is_file() && !should_skip(&file_path) {
+          if file_path.is_file() && !should_skip(&file_path, excludes)
+          {
             if let Err(e) = process_file(
               &file_path,
               max_length,
@@ -169,9 +185,17 @@ fn process_file(
   Ok(())
 }
 
-fn should_skip(path: &PathBuf) -> bool {
+fn should_skip(path: &PathBuf, excludes: &[String]) -> bool {
   let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
+  // Check if the file name matches any exclude pattern
+  for pattern in excludes {
+    if name.contains(pattern) {
+      return true;
+    }
+  }
+
+  // Existing conditions
   name.starts_with(".")
     || name.ends_with(".lock")
     || name == "LICENSE"
