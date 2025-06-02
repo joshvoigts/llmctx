@@ -35,6 +35,11 @@ fn main() -> Result<()> {
         .short("-t"),
     )
     .option(
+      Opt::flag("count")
+        .description("Count tokens and exit")
+        .short("-n"),
+    )
+    .option(
       Opt::arg("exclude")
         .description("Exclude files matching a pattern")
         .short("-e")
@@ -48,10 +53,12 @@ fn main() -> Result<()> {
     optz.get("copy")?.is_some_and(|o| o);
   let should_debug: bool = optz.get("debug")?.is_some_and(|o| o);
   let should_test: bool = optz.get("test")?.is_some_and(|o| o);
+  let should_count_tokens: bool =
+    optz.get("count")?.is_some_and(|o| o);
 
   let excludes: Vec<String> = optz.get_values("exclude")?;
 
-  let max_length = max_tokens * 5;
+  let max_length = max_tokens * 4;
   let mut total_chars: u64 = 0;
   let mut output = String::new();
 
@@ -63,6 +70,13 @@ fn main() -> Result<()> {
       Ok(path) => paths.push(PathBuf::from(path)),
       Err(_) => paths.push(PathBuf::from(".")),
     }
+  }
+
+  // Handle the new count option
+  if should_count_tokens {
+    count_files(&paths, &excludes, &mut total_chars)?;
+    println!("Total tokens: {}", total_chars / 4);
+    return Ok(());
   }
 
   // Process all paths using WalkBuilder for unified traversal
@@ -106,6 +120,36 @@ fn main() -> Result<()> {
 
   if !should_copy_to_clipboard {
     println!();
+  }
+
+  Ok(())
+}
+
+fn count_files(
+  paths: &[PathBuf],
+  excludes: &[String],
+  total_chars: &mut u64,
+) -> Result<()> {
+  for path in paths {
+    let walker = WalkBuilder::new(path).ignore(true).build();
+
+    for result in walker {
+      match result {
+        Ok(entry) => {
+          let file_path = entry.into_path();
+
+          if file_path.is_file() && !should_skip(&file_path, excludes)
+          {
+            let content = fs::read_to_string(&file_path)?;
+            let trimmed_content = content.trim();
+            *total_chars += trimmed_content.len() as u64;
+          }
+        }
+        Err(e) => {
+          return Err(anyhow!("Error accessing path: {}", e));
+        }
+      }
+    }
   }
 
   Ok(())
