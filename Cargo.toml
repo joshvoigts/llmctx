@@ -11,4 +11,4 @@ readme = "README.md"
 [dependencies]
 anyhow = "1.0.97"
 ignore = "0.4.23"
-optz = { path = "../optz" }
+optz = "0.5.0"
