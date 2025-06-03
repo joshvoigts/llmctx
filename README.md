@@ -56,21 +56,21 @@ When running `llmctx` without any special flags, the tool will
 process files in the current directory (or the Git root if in a
 repo) and output their contents in a structured format:
 
-```text
+````text
 src/main.rs:
-\`\`\`
+```
 fn main() {
     println!("Hello, world!");
 }
-\`\`\`
+```
 
 README.md:
-\`\`\`
+```
 # My Project
 
 This is a sample project for demonstration purposes.
-\`\`\`
 ```
+````
 
 ---
 
