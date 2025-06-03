@@ -24,34 +24,53 @@ llmctx [OPTIONS] [PATHS]
 
 ### Options
 
-| Flag              | Description                              | Short Flag |
-|-------------------|------------------------------------------|------------|
-| `--max-tokens`    | Maximum number of tokens for output      |            |
-| `--copy`          | Copy output to clipboard                 | `-c`       |
-| `--debug`         | Enable debug mode (shows build info)     | `-d`       |
-| `--test`          | Run tests and include output             | `-t`       |
+| Flag              | Description                      | Short Flag |
+|-------------------|----------------------------------|------------|
+| `--copy`          | Copy output to clipboard         | `-c`       |
+| `--debug`         | Run build and include in output  | `-d`       |
+| `--test`          | Run tests and include in output  | `-t`       |
+| `--num-tokens`    | Get an estimate of tokens        | `-n`       |
+| `--max-tokens`    | Limit output by max tokens       |            |
+| `--exclude`       | Exclude files matching a pattern | `-e`       |
 
 ### Examples
 
 1. **Basic usage** (process current directory):
    ```bash
-   llmctx
+   llmctx .
    ```
 
-2. **Specify a directory**:
+2. **Copy output to clipboard**:
    ```bash
-   llmctx ./src
+   llmctx . -c
    ```
 
-3. **Limit tokens and copy to clipboard**:
+3. **Build and copy to clipboard (only works with rust currently)**:
    ```bash
-   llmctx --max-tokens 1000 -c
+   llmctx --debug -c
    ```
 
-4. **Debug mode (only works with rust currently)**:
-   ```bash
-   llmctx --debug
-   ```
+### Example Output
+
+When running `llmctx` without any special flags, the tool will
+process files in the current directory (or the Git root if in a
+repo) and output their contents in a structured format:
+
+```text
+src/main.rs:
+\`\`\`
+fn main() {
+    println!("Hello, world!");
+}
+\`\`\`
+
+README.md:
+\`\`\`
+# My Project
+
+This is a sample project for demonstration purposes.
+\`\`\`
+```
 
 ---
 

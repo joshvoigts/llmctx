@@ -15,11 +15,6 @@ fn main() -> Result<()> {
     .description("Process files and directories for LLM context")
     .usage("Usage: llmctx [options] [paths]")
     .option(
-      Opt::arg("max-tokens")
-        .default_value(DEFAULT_MAX_TOKENS)
-        .description("Maximum number of tokens"),
-    )
-    .option(
       Opt::flag("copy")
         .description("Copy output to clipboard")
         .short("-c"),
@@ -35,9 +30,14 @@ fn main() -> Result<()> {
         .short("-t"),
     )
     .option(
-      Opt::flag("count")
-        .description("Count tokens and exit")
+      Opt::flag("num-tokens")
+        .description("Get an estimate of tokens")
         .short("-n"),
+    )
+    .option(
+      Opt::arg("max-tokens")
+        .default_value(DEFAULT_MAX_TOKENS)
+        .description("Limit output by max tokens"),
     )
     .option(
       Opt::arg("exclude")
