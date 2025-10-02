@@ -1,6 +1,6 @@
 [package]
 name = "llmctx"
-version = "0.6.0"
+version = "0.10.0"
 edition = "2024"
 description = "LLM context builder"
 license = "MIT"
