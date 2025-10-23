@@ -49,12 +49,10 @@ fn main() -> Result<()> {
 
   let max_tokens: u64 =
     optz.get("max-tokens")?.expect("Invalid max_tokens");
-  let should_copy_to_clipboard: bool =
-    optz.get("copy")?.is_some_and(|o| o);
-  let should_debug: bool = optz.get("debug")?.is_some_and(|o| o);
-  let should_test: bool = optz.get("test")?.is_some_and(|o| o);
-  let should_count_tokens: bool =
-    optz.get("count")?.is_some_and(|o| o);
+  let should_copy_to_clipboard: bool = optz.has("copy")?;
+  let should_debug: bool = optz.has("debug")?;
+  let should_test: bool = optz.has("test")?;
+  let should_count_tokens: bool = optz.has("num-tokens")?;
 
   let excludes: Vec<String> = optz.get_values("exclude")?;
 

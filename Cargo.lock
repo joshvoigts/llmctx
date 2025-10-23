@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "llmctx"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "ignore",
@@ -104,9 +104,9 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
 name = "optz"
-version = "0.7.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ea7b927bf5b5cb2830cce1096e6a2c19c7242902e19c15c52b1986abaaab5ca"
+checksum = "c24919c2fa1c7d9168ea606f2b0bc6a9c182872ec6c70272c209e85218830176"
 
 [[package]]
 name = "proc-macro2"
